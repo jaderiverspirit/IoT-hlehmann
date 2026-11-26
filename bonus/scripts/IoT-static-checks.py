@@ -65,7 +65,7 @@ assert gitlab_app['spec']['destination']['namespace'] == 'dev'
 gitlab = list(yaml.safe_load_all((R/'bonus/confs/IoT-gitlab.yaml').read_text()))
 assert {x['kind'] for x in gitlab} == {'Deployment', 'PersistentVolumeClaim', 'Service'}
 assert all(x['metadata']['namespace'] == 'gitlab' for x in gitlab)
-assert next(x for x in gitlab if x['kind'] == 'Deployment')['spec']['template']['spec']['containers'][0]['image'] == 'gitlab/gitlab-ce:19.5.6-ce.0'
+assert next(x for x in gitlab if x['kind'] == 'Deployment')['spec']['template']['spec']['containers'][0]['image'] == 'gitlab/gitlab-ce:19.5.9-ce.0'
 
 assert set(x.name for x in R.iterdir() if x.is_dir() and not x.name.startswith(".")) == {'p1','p2','p3','bonus'}
 for part in ('p1','p2','p3','bonus'):
