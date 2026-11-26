@@ -13,9 +13,61 @@ state_dir="${HOME}/.config/iot"
 mkdir -p "$state_dir"
 chmod 700 "$state_dir"
 pid_file="$state_dir/gitlab-portforward.pid"
-if [[ -f "$pid_file" ]] && kill -0 "$(cat "$pid_file")" 2>/dev/null; then
+# Validate that the saved PID belongs to our GitLab port-forward.
+is_gitlab_forward() {
+  local pid="${1:-}"
+  local cmd
+
+  [[ "$pid" =~ ^[1-9][0-9]*$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+
+  cmd="$(ps -p "$pid" -o args= 2>/dev/null)" || return 1
+
+  [[ "$cmd" == 'kubectl -n gitlab port-forward --address 127.0.0.1 svc/gitlab 8081:8081' ]]
+}
+
+# Recover an unresponsive managed port-forward.
+if [[ -f "$pid_file" ]] && is_gitlab_forward "$(cat "$pid_file")"; then
+  if ! curl --noproxy '*' --silent --fail \
+      --connect-timeout 3 --max-time 5 \
+      'http://gitlab.gitlab.svc.cluster.local:8081/users/sign_in' \
+      >/dev/null; then
+
+    # Do not restart forwarding if GitLab itself is unavailable.
+    if ! kubectl -n gitlab rollout status deployment/iot-gitlab \
+        --timeout=15s >/dev/null; then
+      echo 'ERROR: GitLab deployment is not ready.' >&2
+      exit 1
+    fi
+
+    pid="$(cat "$pid_file")"
+    if is_gitlab_forward "$pid"; then
+      echo 'Restarting unresponsive managed GitLab port-forward.'
+      kill "$pid"
+      sleep 2
+      rm -f -- "$pid_file"
+    fi
+  fi
+fi
+
+if [[ -f "$pid_file" ]] && is_gitlab_forward "$(cat "$pid_file")"; then
   echo "Existing kubectl port-forward: PID $(cat "$pid_file")"
+elif curl --noproxy '*' --silent --fail \
+    --connect-timeout 3 --max-time 5 \
+    'http://gitlab.gitlab.svc.cluster.local:8081/users/sign_in' \
+    >/dev/null; then
+  echo 'GitLab is already accessible through an existing connection.'
+  echo 'Reusing connection without starting another port-forward.'
 else
+  # Do not start another listener if port 8081 is occupied.
+  if [[ -n "$(ss -H -ltn 'sport = :8081')" ]]; then
+    echo 'ERROR: Port 8081 is occupied, but GitLab is unreachable.' >&2
+    echo 'Inspect the listener with:' >&2
+    echo "  sudo ss -ltnp 'sport = :8081'" >&2
+    echo 'Resolve the port conflict and rerun this script.' >&2
+    exit 1
+  fi
+
   nohup kubectl -n gitlab port-forward --address 127.0.0.1 \
 	svc/gitlab 8081:8081 > "$state_dir/gitlab-portforward.log" 2>&1 </dev/null &
   echo "$!" > "$pid_file"
