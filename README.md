@@ -359,18 +359,19 @@ cat /etc/debian_version
 
 Expected: Debian GNU/Linux 13 (`trixie`). The exact point-release number depends on the installation image and installed updates.
 
-Verify administrator privileges and Internet connectivity:
-
-```bash
-sudo -v
-curl -I https://github.com
-```
-
 Install the tools required to retrieve the project:
 
 ```bash
 sudo apt update
 sudo apt install -y git curl ca-certificates
+curl --version
+```
+
+Verify administrator privileges and Internet connectivity:
+
+```bash
+sudo -v
+curl -I https://github.com
 ```
 
 Clone the repository **inside the Debian VM**:
@@ -531,6 +532,12 @@ git push origin main
 
 **Back inside the Debian VM**, verify automatic reconciliation:
 
+Before checking the Kubernetes rollout, wait until Argo CD reports `Synced` and `Healthy` for the exact Git revision pushed to GitHub. Verify the revision using the following command:
+
+```bash
+kubectl -n argocd get application iot-github -o jsonpath='{.status.sync.revision}'; echo
+```
+
 ```bash
 kubectl -n argocd get application iot-github
 kubectl -n dev rollout status deployment/iot-playground --timeout=300s
@@ -560,8 +567,6 @@ Keep the Debian VM and the `iot` K3d cluster running.
 
 **Do not delete or rebuild the Kubernetes cluster.** The Bonus deploys a local GitLab instance into this existing cluster and switches Argo CD to the GitLab repository instead of GitHub.
 
-Continue with **Section 6 — Bonus**.
-
 ## 6. Bonus — local GitLab in the same P3 cluster
 
 The Bonus extends **the existing P3 K3d cluster `iot`**. It deploys GitLab CE into the dedicated `gitlab` namespace and switches the existing Argo CD workflow from a public GitHub source to a **local GitLab repository**.
@@ -575,6 +580,8 @@ Bonus: GitLab (local) ───► Argo CD (argocd) ───► playground (dev
 ```
 
 The GitLab container uses the official GitLab CE image with a specific version tag defined in `bonus/confs/IoT-gitlab.yaml`. It has persistent storage (PVC request: 25 GiB). Upgrades of an initialized GitLab instance must follow GitLab's supported version-specific upgrade path; changing the image tag alone is not a substitute for a supported migration.
+
+The P3 and Bonus environment was tested with Debian 13.8, Docker 29.10.1, K3d 5.9.0, K3s 1.35.5 and GitLab CE 19.5.9. These are tested versions, not mandatory version requirements.
 
 ### Install GitLab and configure access
 
@@ -596,6 +603,8 @@ Inside the cluster, this name resolves via Kubernetes DNS. From the Debian VM, t
 
 ### Switch Argo CD to local GitLab
 
+Repeated bootstrap execution preserves existing GitLab repository history and the version defined in the repository. The script validates the working tree and Application deletion finalizers, then verifies the exact Git revision, expected image, Argo CD synchronization, health and Kubernetes rollout.
+
 ```bash
 ./bonus/scripts/IoT-bootstrap-local-repo.sh
 ./bonus/scripts/IoT-check.sh
@@ -613,6 +622,14 @@ kubectl -n argocd get application iot-gitlab \
 ```
 
 ### Demonstrate local GitLab continuous deployment
+
+Before starting the demonstration, establish the initial v1 state:
+
+```bash
+./bonus/scripts/IoT-set-local-version.sh v1
+```
+
+After each version change, restart the playground port-forward if the previous connection was interrupted by Pod replacement.
 
 Keep the playground port-forward running in one terminal:
 
@@ -688,7 +705,7 @@ curl http://127.0.0.1:8888/                    # Expected message: v1
 ./bonus/scripts/IoT-check.sh
 ```
 
-**How to explain the result:** GitLab runs as a Pod inside the K3d cluster; its persistent volume keeps repository data across container restarts. Argo CD watches its internal service URL and reconciles the same application previously managed from GitHub. Do not expose or commit GitLab passwords, personal access tokens or local bootstrap files. If the source switch or update fails, inspect Argo CD sync status, GitLab Pod readiness, PVC state and the local port-forward logs.
+**Result:** GitLab runs as a Pod inside the K3d cluster; its persistent volume keeps repository data across container restarts. Argo CD watches its internal service URL and reconciles the same application previously managed from GitHub. Do not expose or commit GitLab passwords, personal access tokens or local bootstrap files. If the source switch or update fails, inspect Argo CD sync status, GitLab Pod readiness, PVC state and the local port-forward logs.
 <!-- EVAL-MANUAL-TESTS-Bonus-END -->
 
 ## 7. Verification reference
@@ -712,12 +729,6 @@ For the static checker, install PyYAML if needed (for example, through your dist
 ```bash
 vagrant status
 VBoxManage list vms
-for vm in \
-    "IoTS" \
-    "IoTSW" 
-do
-    VBoxManage unregistervm "$vm" --delete
-done
 vagrant global-status --prune
 ```
 
