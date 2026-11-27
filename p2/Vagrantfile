@@ -8,6 +8,8 @@ raise "Unsupported provider: #{provider}" unless provider == 'virtualbox'
 Vagrant.configure('2') do |config|
   config.vm.boot_timeout = 900
   config.vm.box = 'IoT-Debian13-virtualbox'
+  # explicitly required in the subject:
+  config.vm.box_url = "file://#{File.expand_path('../boxes/IoT-Debian13.8-virtualbox.box', __dir__)}"
   config.vm.box_check_update = false
   config.vm.synced_folder '.', '/vagrant', type: 'rsync'
 

@@ -16,3 +16,5 @@
 # Locally built Debian Vagrant images
 
 # Locally built Vagrant boxes
+/boxes/
+/boxes/

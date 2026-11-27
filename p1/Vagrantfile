@@ -16,6 +16,8 @@ File.chmod(0o600, token_file)
 
 Vagrant.configure('2') do |config|
   config.vm.box = 'IoT-Debian13-virtualbox'
+  # explicitly required in the subject:
+  config.vm.box_url = "file://#{File.expand_path('../boxes/IoT-Debian13.8-virtualbox.box', __dir__)}"
   config.vm.box_check_update = false # Use the installed local box
   config.vm.synced_folder '.', '/vagrant', type: 'rsync'
 
